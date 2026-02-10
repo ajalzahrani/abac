@@ -1,0 +1,355 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider      = "prisma-client-js"
+  output        = "../generated/prisma"
+  binaryTargets = ["native", "darwin-arm64"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String      @id @default(cuid())
+  name         String
+  email        String      @unique
+  mobileNo     String?             
+  username     String      @unique
+  password     String
+  departmentId String?
+  createdAt    DateTime    @default(now())
+  roleId       String
+  department   Department? @relation(fields: [departmentId], references: [id])
+  role         Role        @relation(fields: [roleId], references: [id])
+
+  documents Document[]        @relation("CreatedDocuments")
+  versions  DocumentVersion[] @relation("UploadedVersions")
+
+  person Person[]
+  
+  // Notification relations
+  notificationPreferences NotificationPreference[]
+  notifications           Notification[]
+}
+
+// Role model kept for ABAC - roles are used as attributes in policies (e.g., user.role === "ADMIN")
+model Role {
+  id          String           @id @default(cuid())
+  name        String           @unique
+  description String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  users       User[]
+  policyAssignments PolicyAssignment[] // ABAC: policies assigned to this role
+}
+
+// ============================================
+// ABAC (Attribute-Based Access Control) Models
+// ============================================
+
+enum PolicyEffect {
+  ALLOW
+  DENY
+}
+
+enum PolicyRuleOperator {
+  equals
+  notEquals
+  in
+  notIn
+  contains
+  notContains
+  greaterThan
+  lessThan
+  greaterThanOrEqual
+  lessThanOrEqual
+  exists
+  notExists
+  regex
+}
+
+enum LogicalOperator {
+  AND
+  OR
+}
+
+// Policy defines an access control policy
+model Policy {
+  id           String       @id @default(cuid())
+  name         String       @unique
+  description  String?
+  effect       PolicyEffect @default(ALLOW) // ALLOW or DENY
+  action       String       // e.g., "delete:document", "approve:document", "view:document"
+  resourceType String       // e.g., "document", "user", "department"
+  priority     Int          @default(100) // Lower number = higher priority
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  rules        PolicyRule[]
+  assignments  PolicyAssignment[]
+
+  @@index([resourceType, action, isActive])
+  @@index([priority])
+}
+
+// PolicyRule defines conditions that must be met for a policy to apply
+model PolicyRule {
+  id              String            @id @default(cuid())
+  policyId        String
+  policy          Policy            @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  attribute       String            // e.g., "user.department", "resource.status", "user.id"
+  operator        PolicyRuleOperator @default(equals)
+  value           Json?             // Flexible value storage (can be string, number, array, etc.)
+  logicalOperator LogicalOperator?  @default(AND) // How to combine with next rule within group (AND/OR)
+  order           Int               @default(0) // Order of rule evaluation within policy
+  groupIndex      Int?              // Optional: rules with same groupIndex form a group. Enables (A OR B) AND C patterns.
+  groupCombineOperator LogicalOperator? // How this group combines with next group. Only applies to last rule in group. If null, uses logicalOperator.
+
+  @@index([policyId, order])
+  @@index([policyId, groupIndex])
+}
+
+// PolicyAssignment assigns policies to users or roles (for backward compatibility)
+model PolicyAssignment {
+  id       String   @id @default(cuid())
+  policyId String
+  policy   Policy   @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  userId   String?  // Optional: assign to specific user
+  roleId   String?  // Optional: assign to role (for backward compatibility)
+  role     Role?    @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([policyId, userId, roleId])
+  @@index([userId])
+  @@index([roleId])
+}
+
+// Update Role model to include PolicyAssignment relation
+// (This will be added via search_replace)
+
+model Department {
+  id                String                 @id @default(cuid())
+  name              String                 @unique
+  documents         Document[]  @relation("DocumentDepartments") // Relation to documents
+  users             User[]
+}
+
+// Bussiness
+model Person {
+  id            String    @id @default(uuid())
+  userId        String    @unique
+  firstName     String
+  secondName    String?
+  thirdName     String?
+  lastName      String
+  gender        String    @default("Male") // Male - female
+  dob           DateTime
+  citizenship   String? // Civilian - Foreigner
+  nationalityId String?
+  noriqama      String? // NationNo or IqamaNo
+  mrn           String?
+  employeeNo    String?
+  unitId        String?
+  rankId        String?
+  jobTitleId    String
+  sponsorId     String?
+  pictureLink   String?
+  cardExpiryAt  DateTime?
+  lastRenewalAt DateTime?
+  isActive      Boolean   @default(true)
+
+  // relations
+  user        User        @relation(fields: [userId], references: [id])
+  nationality Nationality? @relation(fields: [nationalityId], references: [id])
+  unit        Unit?       @relation(fields: [unitId], references: [id])
+  rank        Rank?       @relation(fields: [rankId], references: [id])
+  sponsor     Sponsor?    @relation(fields: [sponsorId], references: [id])
+  jobTitle    JobTitle?   @relation(fields: [jobTitleId], references: [id])
+}
+
+model Document {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  createdBy   String
+  creator     User     @relation("CreatedDocuments", fields: [createdBy], references: [id])
+  isArchived  Boolean  @default(false)
+  statusId            String
+  status              DocumentStatus       @relation(fields: [statusId], references: [id])
+  rejectComment       String? // Comment provided when document is rejected
+
+  categoryId    String?
+  category      DocumentCategory?         @relation(fields: [categoryId], references: [id])
+  departments       Department[]      @relation("DocumentDepartments") // New relation for departments
+
+  versions  DocumentVersion[]
+  currentVersionId String? @unique
+  currentVersion   DocumentVersion? @relation("CurrentVersion", fields: [currentVersionId], references: [id])
+
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+}
+
+model CertificateRequirement {
+  id                 String           @id @default(cuid())
+  jobTitleId         String
+  documentCategoryId String
+  isRequired         Boolean          @default(true) // Mandatory vs Optional
+  requiresExpiry     Boolean          @default(true) // Does this cert need an expiry date?
+  isActive           Boolean         @default(true) // Active by default
+  
+  jobTitle           JobTitle         @relation(fields: [jobTitleId], references: [id])
+  documentCategory   DocumentCategory @relation(fields: [documentCategoryId], references: [id])
+
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+
+  @@unique([jobTitleId, documentCategoryId]) // Prevent duplicate rules
+}
+
+model DocumentStatus {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  description String?      // Human-readable description
+  variant     String?
+  documents Document[]
+  documentVersion DocumentVersion[] 
+}
+
+model DocumentVersion {
+  id            String   @id @default(cuid())
+  documentId    String
+  document      Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  versionNumber Int
+  filePath      String // Relative path or S3/MinIO key
+  fileSize      Int
+  hash          String // SHA-256 of the file
+  changeNote    String?
+  uploadedBy    String
+  uploader      User     @relation("UploadedVersions", fields: [uploadedBy], references: [id])
+  expirationDate DateTime?
+
+  // 🔹 Link each version to a status (Draft, Signed, Published, ...)
+  statusId       String?
+  status         DocumentStatus? @relation(fields: [statusId], references: [id])
+
+  // Reverse relation for currentVersion
+  currentFor    Document? @relation("CurrentVersion")
+
+  createdAt DateTime @default(now())
+}
+
+model DocumentCategory {
+  id          String     @id @default(cuid())
+  name        String     @unique
+  description String?
+  documents   Document[]
+  certificateRequirement CertificateRequirement[]
+
+  // optional for future hierarchy
+  parentId    String?    
+  parent      DocumentCategory?  @relation("CategoryParent", fields: [parentId], references: [id])
+  children    DocumentCategory[] @relation("CategoryParent")
+
+  createdAt   DateTime   @default(now())
+}
+
+model Nationality {
+  id     String   @id @default(uuid())
+  nameEn String?  @unique
+  nameAr String
+  person Person[]
+}
+
+model Unit {
+  id     String   @id @default(uuid())
+  nameEn String?
+  nameAr String
+  person Person[]
+}
+
+model Rank {
+  id     String   @id @default(uuid())
+  nameEn String?
+  nameAr String
+  person Person[]
+}
+
+model Sponsor {
+  id     String   @id @default(uuid())
+  nameEn String?
+  nameAr String
+  person Person[]
+}
+
+model JobTitle {
+  id     String   @id @default(uuid())
+  nameEn String   @unique
+  nameAr String?
+  person Person[]
+  certificateRequirement CertificateRequirement[]
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String
+  action     String // e.g., "UPLOAD", "EDIT_METADATA", "ARCHIVE", "REVERT"
+  documentId String?
+  versionId  String?
+  details    String? // JSON or plain text summary
+  createdAt  DateTime @default(now())
+}
+
+enum NotificationChannel {
+  EMAIL
+  MOBILE
+  BOTH
+}
+
+// Sent notifications log
+model Notification {
+  id           String               @id @default(cuid())
+  userId       String
+  user         User                 @relation(fields: [userId], references: [id])
+  title        String
+  message      String
+  type         NotificationType
+  channel      NotificationChannel
+  read         Boolean              @default(false)
+  referenceIds String[]             // Store IDs of related entities (occurrences, referrals)
+  createdAt    DateTime             @default(now())
+  metadata     Json?                // Additional context data
+}
+
+// Notification settings per user
+model NotificationPreference {
+  id             String   @id @default(cuid())
+  userId         String
+  enabled        Boolean  @default(true)
+  channel        NotificationChannel
+  email          String?
+  mobile         String?
+  severityLevels String[] // Array of severity IDs the user wants to be notified about
+  incidents  String[] // Array of incident IDs the user wants to be notified about
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@unique([userId, channel])
+}
+
+enum NotificationType {
+  DOCUMENT_CREATED
+  DOCUMENT_UPDATED
+  HIGH_SEVERITY
+  REFERRAL
+  ASSIGNMENT
+  FEEDBACK
+}
