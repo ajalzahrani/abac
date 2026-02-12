@@ -249,16 +249,22 @@ function evaluateRule(
       return true;
 
     case "greaterThan":
-      return Number(attributeValue) > Number(ruleValue);
-
     case "lessThan":
-      return Number(attributeValue) < Number(ruleValue);
-
     case "greaterThanOrEqual":
-      return Number(attributeValue) >= Number(ruleValue);
-
-    case "lessThanOrEqual":
-      return Number(attributeValue) <= Number(ruleValue);
+    case "lessThanOrEqual": {
+      const a = attributeValue;
+      const b = ruleValue;
+      const aDate = a instanceof Date ? a : new Date(a);
+      const bDate = b instanceof Date ? b : new Date(b);
+      const useDateComparison =
+        !isNaN(aDate.getTime()) || !isNaN(bDate.getTime());
+      const aNum = useDateComparison ? aDate.getTime() : Number(a);
+      const bNum = useDateComparison ? bDate.getTime() : Number(b);
+      if (operatorStr === "greaterThan") return aNum > bNum;
+      if (operatorStr === "lessThan") return aNum < bNum;
+      if (operatorStr === "greaterThanOrEqual") return aNum >= bNum;
+      return aNum <= bNum;
+    }
 
     case "exists":
       return attributeValue !== undefined && attributeValue !== null;
@@ -648,6 +654,7 @@ export async function checkABACAccessWithResource(
           status: true,
           category: true,
           departments: true,
+          currentVersion: { select: { expirationDate: true } },
           creator: {
             select: { id: true, departmentId: true },
           },
@@ -665,6 +672,7 @@ export async function checkABACAccessWithResource(
             createdBy: resourceData.createdBy,
             departmentId: resourceData.departments?.[0]?.id,
             department: resourceData.departments?.[0]?.name,
+            expirationDate: resourceData.currentVersion?.expirationDate ?? undefined,
           },
           action,
           environment,

@@ -1,33 +1,32 @@
 import { PlusCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getRoles } from "@/actions/roles";
+import { getPolicies } from "@/actions/policies";
 import { PageHeader } from "@/components/page-header";
 import { PageShell } from "@/components/page-shell";
 import Link from "next/link";
-import { RoleList } from "./components/role-list";
+import { PolicyList } from "./components/policy-list";
 import { checkServerABACAccess } from "@/lib/permissions-server";
 import { notFound } from "next/navigation";
 
-export default async function RolesPage() {
-  await checkServerABACAccess("view:roles", "role");
-  const roles = await getRoles();
+export default async function PoliciesPage() {
+  await checkServerABACAccess("view:policies", "policy");
+  const result = await getPolicies();
 
-  if (!roles.success) {
+  if (!result.success) {
     return notFound();
   }
 
   return (
     <PageShell>
-      <PageHeader heading="Roles" text="Manage and track roles">
-        <Link href="/roles/new">
+      <PageHeader heading="Policies" text="Manage ABAC policies and rules">
+        <Link href="/policies/new">
           <Button>
             <PlusCircle className="mr-2 h-4 w-4" />
-            Create Role
+            Create Policy
           </Button>
         </Link>
       </PageHeader>
-
-      <RoleList roles={roles.roles ?? []} />
+      <PolicyList policies={result.policies ?? []} />
     </PageShell>
   );
 }

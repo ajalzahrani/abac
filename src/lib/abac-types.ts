@@ -18,6 +18,7 @@ export interface ResourceAttributes {
   id?: string;
   type: string;
   status?: string;
+  expirationDate?: Date;
   departmentId?: string;
   department?: string;
   categoryId?: string;

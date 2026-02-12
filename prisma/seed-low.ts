@@ -73,6 +73,28 @@ async function main() {
 
   await prisma.policy.create({
     data: {
+      name: "View Policies",
+      description: "View and manage ABAC policies",
+      effect: "ALLOW",
+      action: "view:policies",
+      resourceType: "policy",
+      priority: 100,
+      isActive: true,
+      rules: {
+        create: [
+          {
+            attribute: "user.role",
+            operator: "equals",
+            value: "ADMIN",
+            order: 0,
+          },
+        ],
+      },
+    },
+  });
+
+  await prisma.policy.create({
+    data: {
       name: "View Users",
       description: "View the users",
       effect: "ALLOW",
@@ -258,7 +280,6 @@ async function main() {
             logicalOperator: "AND",
             order: 1,
             groupIndex: 2,
-            groupCombineOperator: "AND", // Group 2 AND Group 3
           },
           {
             attribute: "user.id",
@@ -266,6 +287,31 @@ async function main() {
             value: "resource.createdBy",
             order: 2,
             groupIndex: 2,
+            groupCombineOperator: "OR", // Group 2 OR Group 3
+          },
+          {
+            attribute: "resource.expirationDate",
+            operator: "lessThanOrEqual",
+            value: new Date(),
+            order: 3,
+            groupIndex: 3,
+            logicalOperator: "AND",
+          },
+          {
+            attribute: "user.id",
+            operator: "equals",
+            value: "resource.createdBy",
+            order: 4,
+            groupIndex: 3,
+            logicalOperator: "AND",
+          },
+          {
+            attribute: "resource.status",
+            operator: "equals",
+            value: "APPROVED",
+            order: 5,
+            groupIndex: 3,
+            logicalOperator: "AND",
           },
         ],
       },

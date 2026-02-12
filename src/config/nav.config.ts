@@ -89,6 +89,12 @@ export const NAV_ITEMS: NavItem[] = [
         requiredAction: "view:roles",
         resourceType: "role",
       },
+      {
+        label: "Policies",
+        href: "/policies",
+        requiredAction: "view:policies",
+        resourceType: "policy",
+      },
       // {
       //   label: "Permissions",
       //   href: "/permissions",
