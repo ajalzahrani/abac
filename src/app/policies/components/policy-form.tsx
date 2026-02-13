@@ -1,7 +1,7 @@
 // @ts-nocheck
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm, useFieldArray, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "@/components/ui/button";
@@ -91,9 +91,37 @@ export function PolicyForm({
   const handleSubmit = async (data: PolicyFormValues) => {
     setError(null);
     try {
+      // Normalize values: ensure array operators have array values
+      const normalizedData = {
+        ...data,
+        rules: data.rules?.map((rule) => {
+          if (ARRAY_OPERATORS.includes(rule.operator)) {
+            // If operator needs array but value is a string, convert it to array
+            if (typeof rule.value === "string" && rule.value.trim()) {
+              return {
+                ...rule,
+                value: rule.value
+                  .split(",")
+                  .map((s) => s.trim())
+                  .filter(Boolean),
+              };
+            }
+            // If value is already an array, keep it
+            if (Array.isArray(rule.value)) {
+              return rule;
+            }
+            // If value is null/undefined/empty, set to empty array
+            return {
+              ...rule,
+              value: [],
+            };
+          }
+          return rule;
+        }),
+      };
       const result = policyId
-        ? await updatePolicy(policyId, data)
-        : await createPolicy(data);
+        ? await updatePolicy(policyId, normalizedData)
+        : await createPolicy(normalizedData);
       if (result && result.success) {
         toast({
           title: "Success",
@@ -568,18 +596,56 @@ function ValueInput({
   needsArray: boolean;
 }) {
   if (needsArray) {
-    const str =
-      Array.isArray(value) ? value.join(", ") : String(value ?? "");
+    // Use local state to track the raw input string, allowing commas to be typed freely
+    const [inputValue, setInputValue] = useState<string>(() => {
+      // Initialize from the value prop
+      if (Array.isArray(value)) {
+        return value.join(", ");
+      }
+      if (typeof value === "string") {
+        return value;
+      }
+      return "";
+    });
+
+    // Update local state when value prop changes externally (e.g., form reset)
+    useEffect(() => {
+      if (Array.isArray(value)) {
+        const newDisplay = value.join(", ");
+        setInputValue((prev) => (prev !== newDisplay ? newDisplay : prev));
+      } else if (typeof value === "string") {
+        setInputValue((prev) => (prev !== value ? value : prev));
+      } else if (value === null || value === undefined) {
+        setInputValue((prev) => (prev !== "" ? "" : prev));
+      }
+    }, [value]);
+
     return (
       <Input
         placeholder='e.g. ADMIN, AUDITOR or "DRAFT", "REJECTED"'
-        value={str}
+        value={inputValue}
         onChange={(e) => {
-          const parts = e.target.value
+          // Allow user to type freely, including commas - just update local state
+          const newValue = e.target.value;
+          setInputValue(newValue);
+        }}
+        onBlur={(e) => {
+          // On blur, clean up the value and convert to proper array
+          const inputValue = e.target.value;
+          if (!inputValue.trim()) {
+            setInputValue("");
+            onChange([]);
+            return;
+          }
+          // Split by comma and clean up each part
+          const parts = inputValue
             .split(",")
             .map((s) => s.trim())
             .filter(Boolean);
-          onChange(parts);
+          const cleanedArray = parts.length > 0 ? parts : [];
+          const cleanedDisplay = cleanedArray.join(", ");
+          setInputValue(cleanedDisplay);
+          onChange(cleanedArray);
         }}
       />
     );
