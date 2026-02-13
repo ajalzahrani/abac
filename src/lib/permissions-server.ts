@@ -9,12 +9,14 @@ import { getUserSubjectAttributes } from "./permissions";
  * @param resourceType - Type of resource (e.g., "document", "user")
  * @param resourceId - Optional resource ID (will fetch resource from DB if provided)
  * @param resource - Optional resource attributes (if resourceId not provided)
+ * @param redirectToUnauthorized - Whether to redirect to unauthorized page (default: true)
  */
 export async function checkServerABACAccess(
   action: string,
   resourceType: string,
   resourceId?: string,
-  resource?: { [key: string]: any }
+  resource?: { [key: string]: any },
+  redirectToUnauthorized: boolean = true,
 ) {
   const user = await getCurrentUser();
 
@@ -32,26 +34,25 @@ export async function checkServerABACAccess(
       subject,
       resourceType,
       resourceId,
-      action
+      action,
     );
   } else if (resource) {
     // Use provided resource attributes
     hasAccess = await checkABACAccess(
       subject,
       { ...resource, type: resourceType },
-      action
+      action,
     );
   } else {
     // Generic resource check (no specific resource)
-    hasAccess = await checkABACAccess(
-      subject,
-      { type: resourceType },
-      action
-    );
+    hasAccess = await checkABACAccess(subject, { type: resourceType }, action);
   }
 
   if (!hasAccess) {
-    redirect("/unauthorized");
+    if (redirectToUnauthorized) {
+      redirect("/unauthorized");
+    }
+    return false;
   }
 
   return true;

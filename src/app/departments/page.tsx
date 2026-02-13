@@ -9,7 +9,7 @@ import { checkServerABACAccess } from "@/lib/permissions-server";
 import { notFound } from "next/navigation";
 
 export default async function DepartmentsPage() {
-  await checkServerABACAccess("view:department", "department");
+  await checkServerABACAccess("view:departments", "department");
 
   const departments = await getDepartments();
   if (!departments.success) {

@@ -74,13 +74,9 @@ export default async function DocumentPage({
             action="edit:compliance-document"
             resourceType="compliance-document"
             resourceId={document.id}>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" asChild>
-                <Link href={`/documents/${documentId}/edit`}>
-                  Edit Document
-                </Link>
-              </Button>
-            </div>
+            <Button variant="outline" size="sm" asChild>
+              <Link href={`/documents/${documentId}/edit`}>Edit Document</Link>
+            </Button>
           </PermissionCheck>
           {/* FLOW CONDITION: Only show approve and reject buttons if user has approve:document permission and document is in DRAFT status */}
           <div className="flex items-center justify-between gap-2">

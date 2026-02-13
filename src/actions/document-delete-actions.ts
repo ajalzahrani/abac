@@ -3,13 +3,12 @@
 import { prisma } from "@/lib/prisma";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-import {
-  DeletionType,
-} from "./documents.validation";
+import { DeletionType } from "./documents.validation";
 import { revalidatePath } from "next/cache";
 import { rm, mkdir } from "fs/promises";
 import path from "path";
 import { existsSync } from "fs";
+import { checkServerABACAccess } from "@/lib/permissions-server";
 
 /**
  * Document deletion utilities with organized file structure support
@@ -32,7 +31,7 @@ export async function deleteDocument(
     skipFileDeletion?: boolean;
     skipDatabaseDeletion?: boolean;
     logDeletion?: boolean;
-  } = {}
+  } = {},
 ): Promise<{
   success: boolean;
   error?: string;
@@ -41,6 +40,18 @@ export async function deleteDocument(
   const session = await getServerSession(authOptions);
 
   if (!session?.user) {
+    return { success: false, error: "Unauthorized" };
+  }
+
+  const hasAccess = await checkServerABACAccess(
+    "delete:compliance-document",
+    "compliance-document",
+    documentId,
+    undefined,
+    false,
+  );
+
+  if (!hasAccess) {
     return { success: false, error: "Unauthorized" };
   }
 
@@ -65,7 +76,7 @@ export async function deleteDocument(
 
     if (logDeletion) {
       console.log(
-        `Starting deletion of document ${documentId} (${document.title})`
+        `Starting deletion of document ${documentId} (${document.title})`,
       );
       console.log(`Deletion type: ${deletionType}`);
       console.log(`Versions: ${document.versions.length}`);
@@ -105,7 +116,7 @@ export async function deleteDocument(
       if (deletionResult) {
         console.log(`Files deleted: ${deletionResult.deletedFiles.length}`);
         console.log(
-          `Total size freed: ${deletionResult.totalSizeDeleted} bytes`
+          `Total size freed: ${deletionResult.totalSizeDeleted} bytes`,
         );
       }
     }
@@ -183,7 +194,7 @@ export async function getDocumentFileStats(documentId: string): Promise<{
  */
 export async function deleteDocumentFiles(
   documentId: string,
-  deletionType: DeletionType = DeletionType.HARD
+  deletionType: DeletionType = DeletionType.HARD,
 ): Promise<DeletionResult> {
   const result: DeletionResult = {
     success: true,
@@ -204,7 +215,7 @@ export async function deleteDocumentFiles(
     // Get file statistics before deletion
     const stats = await getDocumentFileStats(documentId);
     console.log(
-      `Deleting document ${documentId}: ${stats.totalFiles} files, ${stats.totalSize} bytes`
+      `Deleting document ${documentId}: ${stats.totalFiles} files, ${stats.totalSize} bytes`,
     );
 
     if (deletionType === DeletionType.SOFT) {
@@ -219,7 +230,7 @@ export async function deleteDocumentFiles(
         process.cwd(),
         "public",
         "archive",
-        documentId
+        documentId,
       );
       await mkdir(path.dirname(archiveDir), { recursive: true });
 
@@ -269,7 +280,7 @@ export async function deleteDocumentFiles(
     await deleteDirectory(baseDir);
 
     console.log(
-      `Hard delete completed for document ${documentId}: ${result.deletedFiles.length} files deleted`
+      `Hard delete completed for document ${documentId}: ${result.deletedFiles.length} files deleted`,
     );
   } catch (error) {
     result.success = false;
@@ -285,7 +296,7 @@ export async function deleteDocumentFiles(
  */
 export async function batchDeleteDocuments(
   documentIds: string[],
-  deletionType: DeletionType = DeletionType.HARD
+  deletionType: DeletionType = DeletionType.HARD,
 ): Promise<{
   success: boolean;
   results: Array<{ documentId: string; success: boolean; error?: string }>;
